@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-950 text-white font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .auth-input {
+    @apply w-full bg-dark-800/80 border-2 border-dark-700 rounded-lg px-4 py-3 
+    text-white placeholder:text-dark-400 focus:outline-none focus:border-primary-500
+    transition-all duration-300;
+  }
+  
+  .auth-btn {
+    @apply w-full bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400
+    text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300
+    focus:outline-none focus:ring-2 focus:ring-primary-300 focus:ring-opacity-50 shadow-lg;
+  }
+  
+  .auth-link {
+    @apply text-primary-300 hover:text-primary-200 transition-colors duration-300 underline;
+  }
+  
+  .particle {
+    @apply absolute rounded-full opacity-20 pointer-events-none;
+  }
+}
+
+.gradient-bg {
+  background: linear-gradient(145deg, #540404, #330000, #0f0f0f);
+  background-size: 200% 200%;
+  animation: gradient 15s ease infinite;
+}
+
+.card-border {
+  position: relative;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.card-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem; 
+  padding: 2px;
+  background: linear-gradient(45deg, #ff3333, #cc0000, #ffd700, #990000);
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
