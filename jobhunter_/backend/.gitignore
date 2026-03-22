@@ -1,0 +1,48 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+python/__pycache__
+python/__pycache__/*
+# code coverage
+coverage
+*.lcov
+python/__pycache__
+python/__pycache__/*
+
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+# .env
+# .env.development.local
+# .env.test.local
+# .env.production.local
+# .env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+.venv
+.venv/*
+uploads/
+__pycache__/
+*.pyc
+/backend/venv
+/backend/venv/*
+/backend/__pycache__/
+/backend/*.pyc

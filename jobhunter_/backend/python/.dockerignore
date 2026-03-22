@@ -1,0 +1,33 @@
+# Must required: avoid sending Python caches and local environments to build context.
+
+**pycache**/
+_.py[cod]
+_.pyo
+\*.pyd
+.Python
+venv/
+.venv/
+
+# Must required: keep secrets and VCS metadata out of images.
+
+.env
+.env.\*
+.git/
+.gitignore
+
+# Must required: prevent local runtime data from being baked into image layers.
+
+uploads/
+\*.log
+
+# Optional: reduce context further by skipping local tooling caches.
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+dist/
+build/
+\*.egg-info/
+Thumbs.db
+.DS_Store
