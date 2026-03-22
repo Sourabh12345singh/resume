@@ -1,163 +1,136 @@
-# Resume ATS & Job Recommendation System
+# Jobhunter - Resume ATS Analyzer & Job Recommender
 
-This project is split into **two independent services**:
-
-- **TypeScript Backend (Bun + Express)** - Authentication, database, resume uploads, job search/recommendations
-- **Python Service (Flask)** - PDF text extraction and resume analysis
+Analyze resumes for ATS compatibility and get ML-powered job recommendations.
 
 ## Quick Start
 
-### Run Services Separately
-
-**Terminal 1 - Python Service (Port 5000):**
-
 ```bash
-cd backend/python
-python3 -m venv venv
-source venv/bin/activate  # On Linux/Mac
-pip install -r requirements.txt
-python app.py
+docker-compose up --build -d
 ```
 
-**Terminal 2 - TypeScript Backend (Port 3001):**
-
-```bash
-cd backend
-bun run dev
-```
-
-## Manual Setup
-
-### Python Service (Port 5000)
-
-```bash
-cd backend/python
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Linux/Mac
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run server
-python app.py
-```
-
-### TypeScript Service (Port 3001)
-
-```bash
-cd backend
-
-# Install dependencies
-bun install
-
-# Set up environment variables
-# Create backend/.env (see example below)
-
-# Run server
-bun run dev
-```
-
-## Environment Variables
-
-Create `backend/.env`:
-
-```env
-# Database (MongoDB)
-MONGODB_URI=your_mongodb_connection_string
-
-# Auth
-JWT_SECRET=your_secret_key
-
-# Server
-PORT=3001
-NODE_ENV=development
-
-# Python Service URL (from backend to Python service)
-PYTHON_SERVICE_URL=http://localhost:5000
-
-# Job API
-JOOBLE_API_KEY=your_jooble_api_key
-```
-
-> Note: The backend exits on startup if no database connection string is provided.
-
-## Database Setup
-
-MongoDB collections and indexes are created automatically by Mongoose models.
-
-You can still run the migration command; it is a no-op in Mongo mode:
-
-```bash
-cd backend
-bun run migrate
-```
-
-## API Endpoints
-
-### TypeScript Backend (http://localhost:3001)
-
-- `POST /api/auth/signup` - Create account
-- `POST /api/auth/login` - Login
-- `POST /api/upload-resume` - Upload resume
-- `GET /api/latest-resume` - Fetch latest resume
-- `GET /api/resume/:id` - Download resume by ID
-- `POST /api/analyze` - Analyze latest resume
-- `POST /api/analyze/:id` - Analyze resume by ID
-- `POST /api/jobs/search` - Search jobs (Jooble)
-- `POST /api/jobs/refresh` - Refresh jobs from Jooble
-- `GET /api/jobs` - Get jobs from database
-- `GET /api/jobs/recommendations` - Get job recommendations
-- `GET /health` - Health check
-
-### Python Service (http://localhost:5000) - Core
-
-- `GET /health` - Health check
-- `POST /api/extract-text` - Extract text from PDF
-- `POST /api/analyze-text` - Analyze resume text
-- `POST /api/analyze-pdf` - Complete analysis pipeline
-
-### Python Service (http://localhost:5000) - ML
-
-- `POST /api/ml/analyze-text` - Analyze resume text (ML)
-- `POST /api/ml/analyze-pdf` - Complete analysis pipeline (ML)
-- `POST /api/ml/match-job` - Match resume to a job (ML)
-- `POST /api/ml/batch-match-jobs` - Batch match jobs (ML)
+- **Frontend:** http://localhost:5173
+- **Backend:** http://localhost:3001
+- **Python ML:** http://localhost:5000
 
 ## Architecture
 
 ```
-TypeScript Backend (3001)
-    ↓ HTTP Request
-Python Service (5000)
-    ↓ PDF Extraction & Analysis
-TypeScript Backend (3001)
-    ↓ Response to Client
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────┐
+│   Browser   │────▶│   Frontend   │────▶│   Backend   │────▶│ MongoDB  │
+│             │◀────│   (React)    │◀────│   (Bun)     │     │          │
+└─────────────┘     └──────────────┘     └──────┬──────┘     └──────────┘
+                                                │
+                                                ▼
+                                      ┌─────────────────┐
+                                      │  Python (Flask) │
+                                      │  ML Processing   │
+                                      └─────────────────┘
 ```
 
-**Benefits:**
+## User Flow
 
-- ✅ Complete separation of Python and JavaScript
-- ✅ Can scale services independently
-- ✅ Can deploy on different servers/containers
-- ✅ Easy to maintain and debug
-- ✅ No child process management
+```
+Sign Up → Login → Upload PDF → Select Level (entry/mid/senior) → Analyze → View Score → Get Jobs
+```
 
-## Frontend
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/auth/signup | User registration |
+| POST | /api/auth/login | User login |
+| POST | /api/upload-resume | Upload PDF |
+| POST | /api/analyze | Analyze resume |
+| GET | /api/jobs/recommendations | Get job matches |
+
+## ATS Scoring (0-100)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ATS Score = ML Score (0-20) + Rule Score (0-80)          │
+├─────────────────────────────────────────────────────────────┤
+│  ML Score: Sentence-BERT semantic similarity                │
+│  Rule Score: Contact(3) + Skills(10) + Action Verbs(10)   │
+│            + Quantified Metrics(10) + Experience(7) +       │
+│            + Sections(5) + Education(5) + Format(5) + ...   │
+├─────────────────────────────────────────────────────────────┤
+│  Status: Excellent(80+) | Good(65+) | Fair(50+) | Poor     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Level Adjustments:** Entry level expects 5+ skills, senior expects 15+.
+
+## Job Matching
+
+```
+Resume + Job Description → Sentence-BERT → Semantic Similarity
+                                      │
+                                      ▼
+                    + ATS Score Contribution (0-15 pts)
+                                      │
+                                      ▼
+                    - Seniority Penalty (if level mismatch)
+                    - entry→senior: -40 pts
+                    - mid→senior: -10 pts
+                                      │
+                                      ▼
+                        Final Match Score (0-100)
+```
+
+## Python ML Pipeline
+
+```
+PDF File → PyMuPDF (extract text) → Sentence-BERT (analyze) → Results
+                                           │
+                                           ├── ATS Score
+                                           ├── Skills (technical/soft)
+                                           ├── Insights (strengths)
+                                           └── Recommendations (improve)
+```
+
+## Database (MongoDB)
+
+```
+users         → email, password_hash
+resumes       → file_path, analysis_data, target_level
+jobs          → title, company, description, url
+recommendations → match_score, reasons, batch_id
+```
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Frontend | React, TypeScript, Vite, Tailwind |
+| Backend | Express, TypeScript, Bun |
+| Database | MongoDB |
+| ML | Flask, Sentence-BERT, PyTorch, PyMuPDF |
+| Container | Docker |
+
+## Environment Variables
+
+```env
+# Backend (.env)
+MONGODB_URI=mongodb://localhost:27017/jobhunter
+JWT_SECRET=your_secret_key
+PYTHON_SERVICE_URL=http://localhost:5000
+
+# Frontend (.env)
+VITE_API_URL=http://localhost:3001
+```
+
+## Docker Commands
 
 ```bash
-cd frontend
+# Start
+docker-compose up -d
 
-# Install dependencies
-bun install
+# Rebuild
+docker-compose up --build -d
 
-# Run development server
-bun run dev
+# Stop
+docker-compose down
+
+# View logs
+docker-compose logs -f
 ```
-
-## Documentation
-
-- [Backend README](backend/README.md)
-- [Python Service README](backend/python/README.md)
-  See `docs/` for architecture/design references and additional notes.
