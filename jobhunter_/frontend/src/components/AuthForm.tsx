@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { User, Mail, Lock, Eye, EyeOff, Briefcase as BriefcaseBusiness } from 'lucide-react';
-import axios from 'axios';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Briefcase as BriefcaseBusiness,
+} from "lucide-react";
+import axios from "axios";
 
 interface AuthFormProps {
-  type: 'login' | 'signup';
+  type: "login" | "signup";
 }
 
 interface SignupResponse {
@@ -22,51 +29,53 @@ interface SignupResponse {
 const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
-      if (type === 'signup') {       
-        const response = await axios.post<SignupResponse>('http://localhost:3001/api/auth/signup', {
+      if (type === "signup") {
+        // TODO: Replace with actual API endpoint
+        const response = await axios.post<SignupResponse>(`/api/auth/signup`, {
           username: name,
           email,
-          password
+          password,
         });
 
         if (response.data.success) {
           // Redirect to login page after successful signup
-          navigate('/login');
+          navigate("/login");
         } else {
-          setError(response.data.message || 'Signup failed');
+          setError(response.data.message || "Signup failed");
         }
       } else {
         // Login logic
-        const response = await axios.post<SignupResponse>('http://localhost:3001/api/auth/login', {
+        // TODO: Replace with actual API endpoint
+        const response = await axios.post<SignupResponse>(`/api/auth/login`, {
           email,
-          password
+          password,
         });
 
         if (response.data.success && response.data.token) {
           // Store token and user data
-          localStorage.setItem('token', response.data.token);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
+          localStorage.setItem("token", response.data.token);
+          localStorage.setItem("user", JSON.stringify(response.data.user));
           // Redirect to home page
-          navigate('/home');
+          navigate("/home");
         } else {
-          setError(response.data.message || 'Login failed');
+          setError(response.data.message || "Login failed");
         }
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Authentication failed');
-      console.error('Error during authentication:', err);
+      setError(err.response?.data?.message || "Authentication failed");
+      console.error("Error during authentication:", err);
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +87,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -89,30 +98,33 @@ const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
           <motion.div
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
-            transition={{ 
-              type: "spring", 
-              stiffness: 400, 
-              damping: 10 
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 10,
             }}
           >
             <BriefcaseBusiness size={48} className="text-primary-500" />
           </motion.div>
         </div>
         <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-primary-300 to-accent-300 text-transparent bg-clip-text">
-          {type === 'login' ? 'Welcome Back' : 'Create Account'}
+          {type === "login" ? "Welcome Back" : "Create Account"}
         </h1>
         <p className="text-dark-300">
-          {type === 'login' 
-            ? 'Sign in to access your professional profile' 
-            : 'Start your professional journey with us'}
+          {type === "login"
+            ? "Sign in to access your professional profile"
+            : "Start your professional journey with us"}
         </p>
       </div>
 
       <div className="card-border bg-dark-900/70 p-8">
         <form onSubmit={handleSubmit}>
-          {type === 'signup' && (
+          {type === "signup" && (
             <div className="mb-6">
-              <label htmlFor="name" className="block text-sm font-medium text-dark-300 mb-2">
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-dark-300 mb-2"
+              >
                 Full Name
               </label>
               <div className="relative">
@@ -131,9 +143,12 @@ const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
               </div>
             </div>
           )}
-          
+
           <div className="mb-6">
-            <label htmlFor="email" className="block text-sm font-medium text-dark-300 mb-2">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-dark-300 mb-2"
+            >
               Email Address
             </label>
             <div className="relative">
@@ -151,9 +166,12 @@ const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
               />
             </div>
           </div>
-          
+
           <div className="mb-8">
-            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-2">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-dark-300 mb-2"
+            >
               Password
             </label>
             <div className="relative">
@@ -185,31 +203,33 @@ const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
             type="submit"
             className="auth-btn"
             whileTap={{ scale: 0.98 }}
-            whileHover={{ 
+            whileHover={{
               boxShadow: "0 0 15px rgba(255, 51, 51, 0.5)",
             }}
             disabled={isLoading}
           >
-            {isLoading ? 'Processing...' : type === 'login' ? 'Sign In' : 'Create Account'}
+            {isLoading
+              ? "Processing..."
+              : type === "login"
+                ? "Sign In"
+                : "Create Account"}
           </motion.button>
-          
+
           {error && (
-            <div className="mt-4 text-red-500 text-sm text-center">
-              {error}
-            </div>
+            <div className="mt-4 text-red-500 text-sm text-center">{error}</div>
           )}
-          
+
           <div className="mt-6 text-center text-sm">
-            {type === 'login' ? (
+            {type === "login" ? (
               <p>
-                Don't have an account?{' '}
+                Don't have an account?{" "}
                 <Link to="/signup" className="auth-link">
                   Sign up
                 </Link>
               </p>
             ) : (
               <p>
-                Already have an account?{' '}
+                Already have an account?{" "}
                 <Link to="/login" className="auth-link">
                   Sign in
                 </Link>

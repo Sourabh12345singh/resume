@@ -1,35 +1,20 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { ResumeModel } from '../models/Resume.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 const resumeModel = new ResumeModel();
 const DEFAULT_RESUME_RETENTION = Number(process.env.RESUME_RETENTION_COUNT || 3);
-
-// Ensure uploads directory exists
-const uploadsDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-
-// Configure multer for file storage
-const storage = multer.diskStorage({
-  destination: function (_req: Express.Request, _file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) {
-    cb(null, uploadsDir);
-  },
-  filename: function (_req: Express.Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) {
-    // Create unique filename with timestamp and original name
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, uniqueSuffix + ext);
-  }
-});
+const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
+const BUCKET_ARN = process.env.BUCKET_ARN || 'arn:aws:s3:::jobhunter-resumes01';
+const BUCKET_NAME = process.env.BUCKET_NAME || BUCKET_ARN.split(':::').pop() || 'jobhunter-resumes01';
+const s3 = new S3Client({ region: AWS_REGION });
 
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   fileFilter: function (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
     // Accept only PDF files
     if (file.mimetype === 'application/pdf') {
@@ -76,19 +61,13 @@ router.post('/upload-resume', authenticateToken, (req: express.Request, res: exp
     console.log('Target Level:', req.body?.targetLevel);
 
     if (!req.file) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false, 
         message: 'No file uploaded. Please select a PDF file.' 
       });
     }
 
     if (!req.user?.id) {
-      // Clean up the uploaded file if there was an error
-      if (req.file) {
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error('Error deleting file after auth failure:', err);
-        });
-      }
       return res.status(401).json({
         success: false,
         message: 'User not authenticated'
@@ -97,13 +76,23 @@ router.post('/upload-resume', authenticateToken, (req: express.Request, res: exp
 
     // Get target level from request body (optional)
     const targetLevel = req.body?.targetLevel; // 'entry', 'mid', 'senior'
+    const ext = path.extname(req.file.originalname) || '.pdf';
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+
+    console.log('Uploading resume to S3...');
+    await s3.send(new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: fileName,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype
+    }));
 
     console.log('Storing resume in database...');
     // Store resume information in database
     const resume = await resumeModel.createResume(
       req.user.id,
       req.file.originalname,
-      req.file.path
+      fileName
     );
 
     // Store target level in resume metadata (for later use during analysis)
@@ -137,13 +126,6 @@ router.post('/upload-resume', authenticateToken, (req: express.Request, res: exp
   } catch (error: any) {
     console.error('Upload error:', error);
     console.error('Error stack:', error.stack);
-    
-    // Clean up the uploaded file if there was an error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error deleting file after failed upload:', err);
-      });
-    }
 
     // Provide more detailed error message
     const errorMessage = error.message || 'Error uploading file';
@@ -217,16 +199,7 @@ router.get('/resume/:id', authenticateToken, async (req: express.Request, res: e
       });
     }
 
-    // Check if file exists
-    if (!fs.existsSync(resume.file_path)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Resume file not found'
-      });
-    }
-
-    // Send the file
-    res.sendFile(resume.file_path);
+    return res.status(302).redirect(resume.file_path);
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({
@@ -254,19 +227,9 @@ router.get('/latest-resume-content', authenticateToken, async (req: express.Requ
       });
     }
 
-    if (!fs.existsSync(resume.file_path)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Resume file not found'
-      });
-    }
-
-    // Set appropriate headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${resume.file_name}"`);
-    
-    // Send the PDF file
-    res.sendFile(resume.file_path);
+    return res.status(302).redirect(resume.file_path);
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({

@@ -1,5 +1,10 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ResumeDbModel } from './DbModels.js';
 
 export interface AnalysisHistoryEntry {
@@ -12,6 +17,7 @@ export interface Resume {
   id: string;
   user_id: string;
   file_name: string;
+  s3_key: string;
   file_path: string;
   upload_date: Date;
   is_latest: boolean;
@@ -32,16 +38,71 @@ export interface ResumeContent {
 
 export interface DeletedResumeSummary {
   id: string;
-  file_path: string;
+  s3_key: string;
 }
 
 export class ResumeModel {
+  private readonly s3 = new S3Client({
+    region: process.env.AWS_REGION || 'ap-south-1'
+  });
+
+  private getBucketName(): string {
+    const bucketArn = process.env.BUCKET_ARN || 'arn:aws:s3:::jobhunter-resumes01';
+    return process.env.BUCKET_NAME || bucketArn.split(':::').pop() || 'jobhunter-resumes01';
+  }
+
+  getResumeUrl(s3Key: string): string {
+    return `https://${this.getBucketName()}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${encodeURIComponent(s3Key)}`;
+  }
+
+  private extractS3Key(doc: any): string {
+    if (doc?.s3_key) {
+      return doc.s3_key;
+    }
+
+    if (doc?.file_path && typeof doc.file_path === 'string' && doc.file_path.startsWith('http')) {
+      try {
+        return decodeURIComponent(new URL(doc.file_path).pathname.replace(/^\/+/, ''));
+      } catch {
+        return doc.file_path;
+      }
+    }
+
+    return doc?.file_path || '';
+  }
+
+  async downloadResumeToTempFile(s3Key: string, resumeId: string): Promise<string> {
+    if (!s3Key) {
+      throw new Error('Resume S3 key is missing');
+    }
+
+    const tempDir = path.join(os.tmpdir(), 'jobhunter-resumes');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const tempFilePath = path.join(tempDir, `${resumeId}-${Date.now()}-${path.basename(s3Key)}`);
+    const response = await this.s3.send(new GetObjectCommand({
+      Bucket: this.getBucketName(),
+      Key: s3Key
+    }));
+
+    if (!response.Body) {
+      throw new Error('Empty S3 response body');
+    }
+
+    const writeStream = createWriteStream(tempFilePath);
+    await pipeline(response.Body as any, writeStream);
+    return tempFilePath;
+  }
+
   private mapResume(doc: any): Resume {
     return {
       id: doc._id.toString(),
       user_id: doc.user_id.toString(),
       file_name: doc.file_name,
-      file_path: doc.file_path,
+      s3_key: this.extractS3Key(doc),
+      file_path: doc.file_path || this.getResumeUrl(this.extractS3Key(doc)),
       upload_date: doc.upload_date,
       is_latest: doc.is_latest,
       status: doc.status,
@@ -53,7 +114,7 @@ export class ResumeModel {
     };
   }
 
-  async createResume(userId: string, fileName: string, filePath: string): Promise<Resume> {
+  async createResume(userId: string, fileName: string, s3Key: string): Promise<Resume> {
     if (!mongoose.isValidObjectId(userId)) {
       throw new Error('Invalid user id');
     }
@@ -63,7 +124,7 @@ export class ResumeModel {
     const created = await ResumeDbModel.create({
       user_id: userId,
       file_name: fileName,
-      file_path: filePath,
+      s3_key: s3Key,
       is_latest: true,
       status: 'uploaded'
     });
@@ -201,16 +262,10 @@ export class ResumeModel {
     const toDelete = docs.slice(safeKeep);
     const deletedSummaries: DeletedResumeSummary[] = toDelete.map((doc: any) => ({
       id: doc._id.toString(),
-      file_path: doc.file_path
+      s3_key: doc.s3_key
     }));
 
     await ResumeDbModel.deleteMany({ _id: { $in: toDelete.map((doc: any) => doc._id) } }).exec();
-
-    for (const item of deletedSummaries) {
-      if (fs.existsSync(item.file_path)) {
-        fs.unlink(item.file_path, () => undefined);
-      }
-    }
 
     await this.ensureSingleLatestResume(userId);
     return deletedSummaries;
@@ -227,10 +282,6 @@ export class ResumeModel {
     }
 
     await ResumeDbModel.deleteOne({ _id: resumeId }).exec();
-
-    if (fs.existsSync(resume.file_path)) {
-      fs.unlink(resume.file_path, () => undefined);
-    }
 
     await this.ensureSingleLatestResume(userId);
     return this.mapResume(resume);

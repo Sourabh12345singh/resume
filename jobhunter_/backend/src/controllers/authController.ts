@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { UserModel } from '../models/DbModels.js';
 
 export const signup = async (req: Request, res: Response) => {
@@ -115,10 +116,11 @@ export const login = async (req: Request, res: Response) => {
     await user.save();
 
     // Generate JWT token
-    const jwtExpiry = process.env.JWT_EXPIRES_IN || '7d';
+    const jwtExpiry: SignOptions['expiresIn'] = (process.env.JWT_EXPIRES_IN as SignOptions['expiresIn']) || '7d';
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
+      jwtSecret,
       { expiresIn: jwtExpiry }
     );
 

@@ -9,6 +9,35 @@ import os
 import json
 from pdf_text_extract import extract_pdf_text
 
+def log_request_context(endpoint_name):
+    """Log the incoming request shape for fast debugging."""
+    print(f"\n--- {endpoint_name} REQUEST ---")
+    print(f"Method: {request.method}")
+    print(f"Content-Type: {request.content_type}")
+    print(f"Files present: {list(request.files.keys())}")
+    print(f"Form keys: {list(request.form.keys())}")
+    print(f"JSON available: {request.is_json}")
+
+    try:
+        data = request.get_json(silent=True) if request.is_json else None
+    except Exception as exc:
+        print(f"JSON parse error: {exc}")
+        data = None
+
+    if data:
+        print(f"JSON keys: {list(data.keys())}")
+        if 'filePath' in data:
+          print(f"JSON filePath: {data['filePath']}")
+        if 'targetLevel' in data:
+          print(f"JSON targetLevel: {data['targetLevel']}")
+
+    if request.files and 'file' in request.files:
+        uploaded = request.files['file']
+        print(f"Uploaded file name: {uploaded.filename}")
+        print(f"Uploaded content type: {uploaded.content_type}")
+    if request.form and 'targetLevel' in request.form:
+        print(f"Form targetLevel: {request.form.get('targetLevel')}")
+
 # Import ML modules
 try:
     from resume_analyzer_ml import get_analyzer as get_ml_analyzer
@@ -36,16 +65,19 @@ def health_check():
         'version': '1.0.0'
     })
 
-@app.route('/api/extract-text', methods=['POST'])
+@app.route('/ml/api/extract-text', methods=['POST'])
 def extract_text():
     """Extract text from PDF file"""
     try:
+        log_request_context("extract-text")
+
         # Check if file is in request
         if 'file' not in request.files:
             # Check if file path is provided
-            data = request.get_json()
+            data = request.get_json(silent=True) or {}
             if data and 'filePath' in data:
                 pdf_path = data['filePath']
+                print(f"Using filePath from JSON: {pdf_path}")
             else:
                 return jsonify({
                     'success': False,
@@ -63,6 +95,9 @@ def extract_text():
             # Save file temporarily
             pdf_path = os.path.join(UPLOAD_FOLDER, file.filename)
             file.save(pdf_path)
+            print(f"Saved uploaded PDF to: {pdf_path}")
+
+        print(f"PDF exists before extraction: {os.path.exists(pdf_path)}")
         
         # Extract text
         text = extract_pdf_text(pdf_path)
@@ -85,7 +120,7 @@ def extract_text():
             'error': str(e)
         }), 500
 
-@app.route('/api/analyze-text', methods=['POST'])
+@app.route('/ml/api/analyze-text', methods=['POST'])
 def analyze_text():
     """Analyze resume text and provide ATS score (ML-based)"""
     try:
@@ -95,7 +130,7 @@ def analyze_text():
                 'error': 'ML modules not available'
             }), 503
             
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         if not data or 'text' not in data:
             return jsonify({
@@ -118,7 +153,7 @@ def analyze_text():
             'error': str(e)
         }), 500
 
-@app.route('/api/analyze-pdf', methods=['POST'])
+@app.route('/ml/api/analyze-pdf', methods=['POST'])
 def analyze_pdf():
     """Complete pipeline: extract text from PDF and analyze (ML-based)"""
     try:
@@ -127,14 +162,18 @@ def analyze_pdf():
                 'success': False,
                 'error': 'ML modules not available'
             }), 503
+
+        log_request_context("analyze-pdf")
             
         # Check if file is in request
         if 'file' not in request.files:
             # Check if file path is provided
-            data = request.get_json()
+            data = request.get_json(silent=True) or {}
             if data and 'filePath' in data:
                 pdf_path = data['filePath']
                 target_level = data.get('targetLevel', 'experienced')
+                print(f"Using filePath from JSON: {pdf_path}")
+                print(f"Using targetLevel from JSON: {target_level}")
             else:
                 return jsonify({
                     'success': False,
@@ -153,8 +192,11 @@ def analyze_pdf():
             pdf_path = os.path.join(UPLOAD_FOLDER, file.filename)
             file.save(pdf_path)
             target_level = 'experienced'
+            print(f"Saved uploaded PDF to: {pdf_path}")
+            print(f"Using default targetLevel: {target_level}")
         
         # Step 1: Extract text
+        print(f"PDF exists before extraction: {os.path.exists(pdf_path)}")
         text = extract_pdf_text(pdf_path)
         
         if not text:
@@ -164,14 +206,23 @@ def analyze_pdf():
             }), 500
         
         # Step 2: Analyze text using ML
-        analyzer = get_ml_analyzer()
-        analysis_result = analyzer.analyze_resume(text, target_level)
-        
-        # Add extracted text to response
-        analysis_result['extractedText'] = text
-        analysis_result['textLength'] = len(text)
-        
-        return jsonify(analysis_result)
+        try:
+            analyzer = get_ml_analyzer()
+            analysis_result = analyzer.analyze_resume(text, target_level)
+            
+            # Add extracted text to response
+            analysis_result['extractedText'] = text
+            analysis_result['textLength'] = len(text)
+            
+            return jsonify(analysis_result)
+        except Exception as ml_error:
+            error_msg = str(ml_error)
+            if 'image' in error_msg.lower() or 'does not support' in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'error': 'This PDF appears to be an image-based resume. Please upload a text-based PDF with selectable text.'
+                }), 400
+            raise
         
     except Exception as e:
         return jsonify({
@@ -188,13 +239,13 @@ def root():
         'mlEnabled': ML_ENABLED,
         'endpoints': {
             'health': '/health',
-            'extractText': '/api/extract-text',
-            'analyzeText': '/api/analyze-text',
-            'analyzePdf': '/api/analyze-pdf',
-            'analyzeTextML': '/api/ml/analyze-text',
-            'analyzePdfML': '/api/ml/analyze-pdf',
-            'matchJob': '/api/ml/match-job',
-            'batchMatchJobs': '/api/ml/batch-match-jobs'
+            'extractText': '/ml/api/extract-text',
+            'analyzeText': '/ml/api/analyze-text',
+            'analyzePdf': '/ml/api/analyze-pdf',
+            'analyzeTextML': '/ml/api/ml/analyze-text',
+            'analyzePdfML': '/ml/api/ml/analyze-pdf',
+            'matchJob': '/ml/api/ml/match-job',
+            'batchMatchJobs': '/ml/api/ml/batch-match-jobs'
         }
     })
 
@@ -202,6 +253,7 @@ def root():
 # ML-BASED ENDPOINTS
 # ========================================
 
+@app.route('/ml/api/ml/analyze-text', methods=['POST'])
 @app.route('/api/ml/analyze-text', methods=['POST'])
 def analyze_text_ml():
     """Analyze resume text using ML (Sentence-BERT)"""
@@ -212,7 +264,7 @@ def analyze_text_ml():
         }), 503
     
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         if not data or 'text' not in data:
             return jsonify({
@@ -235,6 +287,7 @@ def analyze_text_ml():
             'error': str(e)
         }), 500
 
+@app.route('/ml/api/ml/analyze-pdf', methods=['POST'])
 @app.route('/api/ml/analyze-pdf', methods=['POST'])
 def analyze_pdf_ml():
     """Complete ML pipeline: extract text from PDF and analyze with ML"""
@@ -245,12 +298,15 @@ def analyze_pdf_ml():
         }), 503
     
     try:
+        log_request_context("ml/analyze-pdf")
+
         # Check if file is in request
         if 'file' not in request.files:
             # Check if file path is provided
-            data = request.get_json()
+            data = request.get_json(silent=True) or {}
             if data and 'filePath' in data:
                 pdf_path = data['filePath']
+                print(f"Using filePath from JSON: {pdf_path}")
             else:
                 return jsonify({
                     'success': False,
@@ -268,8 +324,10 @@ def analyze_pdf_ml():
             # Save file temporarily
             pdf_path = os.path.join(UPLOAD_FOLDER, file.filename)
             file.save(pdf_path)
+            print(f"Saved uploaded PDF to: {pdf_path}")
         
         # Step 1: Extract text
+        print(f"PDF exists before extraction: {os.path.exists(pdf_path)}")
         text = extract_pdf_text(pdf_path)
         
         if not text:
@@ -279,7 +337,11 @@ def analyze_pdf_ml():
             }), 500
         
         # Get target level from form data or JSON
-        target_level = request.form.get('targetLevel') if request.files else request.get_json().get('targetLevel')
+        if request.files:
+            target_level = request.form.get('targetLevel', 'experienced')
+        else:
+            data = request.get_json(silent=True) or {}
+            target_level = data.get('targetLevel', 'experienced')
         
         # Step 2: Analyze text with ML
         analyzer = get_ml_analyzer()
@@ -301,6 +363,7 @@ def analyze_pdf_ml():
             'error': str(e)
         }), 500
 
+@app.route('/ml/api/ml/match-job', methods=['POST'])
 @app.route('/api/ml/match-job', methods=['POST'])
 def match_job_ml():
     """Calculate match score between resume and single job using ML"""
@@ -311,7 +374,7 @@ def match_job_ml():
         }), 503
     
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         if not data or 'resumeText' not in data or 'jobDescription' not in data:
             return jsonify({
@@ -345,6 +408,7 @@ def match_job_ml():
             'error': str(e)
         }), 500
 
+@app.route('/ml/api/ml/batch-match-jobs', methods=['POST'])
 @app.route('/api/ml/batch-match-jobs', methods=['POST'])
 def batch_match_jobs_ml():
     """Calculate match scores for multiple jobs (batch processing)"""
@@ -355,7 +419,7 @@ def batch_match_jobs_ml():
         }), 503
     
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         if not data or 'resumeText' not in data or 'jobs' not in data:
             return jsonify({
@@ -412,14 +476,14 @@ if __name__ == '__main__':
     print('Server running on: http://localhost:5000')
     print('Endpoints:')
     print('  GET  /health - Health check')
-    print('  POST /api/extract-text - Extract text from PDF')
-    print('  POST /api/analyze-text - Analyze resume text (rule-based)')
-    print('  POST /api/analyze-pdf - Complete analysis pipeline (rule-based)')
+    print('  POST /ml/api/extract-text - Extract text from PDF')
+    print('  POST /ml/api/analyze-text - Analyze resume text (rule-based)')
+    print('  POST /ml/api/analyze-pdf - Complete analysis pipeline (rule-based)')
     if ML_ENABLED:
-        print('  POST /api/ml/analyze-text - Analyze resume text (ML)')
-        print('  POST /api/ml/analyze-pdf - Complete analysis pipeline (ML)')
-        print('  POST /api/ml/match-job - Match resume to job (ML)')
-        print('  POST /api/ml/batch-match-jobs - Batch match jobs (ML)')
+        print('  POST /ml/api/ml/analyze-text - Analyze resume text (ML)')
+        print('  POST /ml/api/ml/analyze-pdf - Complete analysis pipeline (ML)')
+        print('  POST /ml/api/ml/match-job - Match resume to job (ML)')
+        print('  POST /ml/api/ml/batch-match-jobs - Batch match jobs (ML)')
     print('=' * 60)
     
     app.run(host='0.0.0.0', port=5000, debug=False)

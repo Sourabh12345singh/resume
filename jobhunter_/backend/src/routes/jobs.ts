@@ -56,10 +56,28 @@ router.get('/jobs', authenticateToken, async (req, res) => {
 
     const jobs = await jobRecommendationService.getJobs(filters);
 
+    if (jobs.length === 0 && !location && !keywords && !days_posted) {
+      console.log('No jobs found in database, attempting live refresh from Jooble');
+      const refreshed = await joobleService.searchJobs({
+        keywords: 'software developer',
+        location: '',
+        page: '1'
+      });
+
+      console.log(`Live refresh returned ${refreshed.jobs.length} jobs`);
+      return res.status(200).json({
+        success: true,
+        count: refreshed.jobs.length,
+        jobs: refreshed.jobs,
+        source: 'jooble_live_refresh'
+      });
+    }
+
     res.status(200).json({
       success: true,
       count: jobs.length,
-      jobs
+      jobs,
+      source: 'database'
     });
   } catch (error: any) {
     console.error('Error fetching jobs:', error);
@@ -191,7 +209,8 @@ router.get('/jobs/recommendations', authenticateToken, async (req, res) => {
       const targetLevel = resume.analysis_data?.targetLevel || 'entry';
       
       const analysisService = (await import('../services/analysisService.js')).default;
-      const freshAnalysis = await analysisService.analyzeResume(resume.file_path, targetLevel);
+      const localFilePath = await resumeModel.downloadResumeToTempFile(resume.s3_key, resume.id);
+      const freshAnalysis = await analysisService.analyzeResume(localFilePath, targetLevel);
       
       if (freshAnalysis.success) {
         // Update the database with fresh analysis

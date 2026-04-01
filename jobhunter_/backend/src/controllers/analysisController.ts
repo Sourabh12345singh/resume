@@ -45,22 +45,14 @@ export const analyzeResumeById = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if file exists
-    const fs = await import('fs');
-    if (!fs.existsSync(resume.file_path)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Resume file not found on server'
-      });
-    }
-
     console.log(`Analyzing resume ID ${resumeId} for user ${userId}`);
     if (targetLevel) {
       console.log(`Target experience level: ${targetLevel}`);
     }
 
     // Perform analysis with target level
-    const analysisResult = await analysisService.analyzeResume(resume.file_path, targetLevel);
+    const localFilePath = await resumeModel.downloadResumeToTempFile(resume.s3_key, resume.id);
+    const analysisResult = await analysisService.analyzeResume(localFilePath, targetLevel);
 
     if (!analysisResult.success) {
       return res.status(500).json({
@@ -106,6 +98,7 @@ export const analyzeResumeById = async (req: Request, res: Response) => {
  */
 export const analyzeLatestResume = async (req: Request, res: Response) => {
   try {
+    console.log('Starting analysis of latest resume');
     const userId = req.user?.id;
     const targetLevel = req.body?.targetLevel; // Get from request body
 
@@ -140,15 +133,6 @@ export const analyzeLatestResume = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if file exists
-    const fs = await import('fs');
-    if (!fs.existsSync(resume.file_path)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Resume file not found on server'
-      });
-    }
-
     if (targetLevel) {
       console.log(`Analyzing with target experience level: ${targetLevel}`);
     }
@@ -156,7 +140,8 @@ export const analyzeLatestResume = async (req: Request, res: Response) => {
     console.log(`Analyzing latest resume for user ${userId}`);
 
     // Perform analysis with target level
-    const analysisResult = await analysisService.analyzeResume(resume.file_path, targetLevel);
+    const localFilePath = await resumeModel.downloadResumeToTempFile(resume.s3_key, resume.id);
+    const analysisResult = await analysisService.analyzeResume(localFilePath, targetLevel);
 
     if (!analysisResult.success) {
       return res.status(500).json({

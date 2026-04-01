@@ -1,15 +1,21 @@
-FROM node:20-alpine
-
+# 🔨 Build stage
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-
 RUN npm ci
 
-COPY . ./
+COPY . .
+RUN npm run build   # 🔥 yaha build hoga
 
-# Expose the Vite dev server port.
+# 🚀 Production stage
+FROM node:20-alpine
+WORKDIR /app
+
+RUN npm install -g serve
+
+COPY --from=builder /app/dist ./dist
+
 EXPOSE 5173
 
-# Start the app and bind to all interfaces for container access.
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["serve", "-s", "dist", "-l", "5173"]

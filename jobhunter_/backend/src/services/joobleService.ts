@@ -44,13 +44,17 @@ export class JoobleService {
     try {
       if (!JOOBLE_API_KEY) {
         console.warn('Jooble API key missing, fetching from database');
-        return this.getJobsFromDatabase(params);
+        const dbJobs = await this.getJobsFromDatabase(params);
+        console.log(`Database fallback returned ${dbJobs.jobs.length} jobs`);
+        return dbJobs;
       }
 
       // Check if we've hit the API limit
       if (this.apiCallCount >= this.API_LIMIT) {
         console.warn('Jooble API limit reached, fetching from database');
-        return this.getJobsFromDatabase(params);
+        const dbJobs = await this.getJobsFromDatabase(params);
+        console.log(`Database fallback returned ${dbJobs.jobs.length} jobs`);
+        return dbJobs;
       }
 
       console.log('Calling Jooble API with params:', params);
@@ -81,7 +85,9 @@ export class JoobleService {
       
       // Fallback to database if API fails
       console.log('Falling back to database jobs');
-      return this.getJobsFromDatabase(params);
+      const dbJobs = await this.getJobsFromDatabase(params);
+      console.log(`Database fallback returned ${dbJobs.jobs.length} jobs`);
+      return dbJobs;
     }
   }
 
@@ -524,6 +530,8 @@ export class JoobleService {
     analysis: any,
     filters: any
   ): Promise<any[]> {
+    let fallbackReason = '';
+
     // Try ML-based matching first
     try {
       const mlMatches = await this.calculateMLMatches(jobs, analysis);
@@ -537,12 +545,19 @@ export class JoobleService {
         
         return filtered;
       }
+
+      fallbackReason = 'ML matching returned no results';
     } catch (error: any) {
       console.log('⚠️ ML matching unavailable, falling back to rule-based');
       console.log('   Error:', error.message);
+      fallbackReason = error.message || 'ML matching failed';
     }
 
     // Fallback to rule-based matching
+    if (fallbackReason) {
+      console.log(`   Using rule-based fallback because: ${fallbackReason}`);
+    }
+
     const matchedJobs = jobs.map(job => {
       const matchScore = this.calculateMatchScore(job, analysis);
       
@@ -573,23 +588,41 @@ export class JoobleService {
         description: job.snippet
       }));
 
-      console.log(`   Calling Python ML service: ${PYTHON_SERVICE_URL}/api/ml/batch-match-jobs`);
-      
-      // Call ML service for batch matching
-      const response = await axios.post(
-        `${PYTHON_SERVICE_URL}/api/ml/batch-match-jobs`,
-        {
-          resumeText: analysis.extractedText || '',
-          jobs: jobsData,
-          atsScore: analysis.score || 0,
-          experienceLevel: analysis.extractedInfo?.experienceLevel || 'entry',
-          yearsOfExperience: analysis.extractedInfo?.yearsOfExperience || 0
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000
+      const payload = {
+        resumeText: analysis.extractedText || '',
+        jobs: jobsData,
+        atsScore: analysis.score || 0,
+        experienceLevel: analysis.extractedInfo?.experienceLevel || 'entry',
+        yearsOfExperience: analysis.extractedInfo?.yearsOfExperience || 0
+      };
+
+      const mlEndpoints = [
+        `${PYTHON_SERVICE_URL}/ml/api/ml/batch-match-jobs`,
+        `${PYTHON_SERVICE_URL}/api/ml/batch-match-jobs`
+      ];
+
+      let response;
+      let lastError: any = null;
+
+      for (const endpoint of mlEndpoints) {
+        console.log(`Calling Python ML service: ${endpoint}`);
+        try {
+          response = await axios.post(endpoint, payload, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000
+          });
+          break;
+        } catch (error: any) {
+          lastError = error;
+          if (error?.response?.status !== 404) {
+            throw error;
+          }
         }
-      );
+      }
+
+      if (!response) {
+        throw lastError || new Error('ML service request failed');
+      }
 
       if (response.data.success && response.data.results) {
         console.log(`✅ ML Matching: Received ${response.data.results.length} results`);

@@ -16,7 +16,7 @@ import { ResumeProvider, useResume } from "../context/ResumeContext";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-const API_URL = "http://localhost:3001/api";
+// const API_URL = import.meta.env.VITE_API_URL; // Removed VITE_API_URL usage
 
 interface Job {
   title: string;
@@ -74,7 +74,7 @@ const ResumeUploadSection = ({
         success: boolean;
         resume?: any;
         message?: string;
-      }>(`${API_URL}/latest-resume`, {
+      }>(`/api/latest-resume`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -126,7 +126,7 @@ const ResumeUploadSection = ({
     try {
       // Upload resume
       const uploadResponse = await axios.post(
-        `${API_URL}/upload-resume`,
+        `/api/upload-resume`,
         formData,
         {
           headers: {
@@ -146,7 +146,7 @@ const ResumeUploadSection = ({
 
       // Analyze resume with target level
       const analyzeResponse = await axios.post(
-        `${API_URL}/analyze`,
+        `/api/analyze`,
         { targetLevel }, // Pass target level to analysis
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -281,7 +281,7 @@ const JobRecommendations = ({
     location: "",
     keywords: "",
     days_posted: 30,
-    min_match_score: 50,
+    min_match_score: 0,
   });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -309,7 +309,7 @@ const JobRecommendations = ({
         success: boolean;
         recommendations?: Job[];
         message?: string;
-      }>(`${API_URL}/jobs/recommendations?${params.toString()}`, {
+      }>(`/api/jobs/recommendations?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

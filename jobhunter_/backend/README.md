@@ -1,6 +1,13 @@
-# Backend (TypeScript + Bun)
+# Backend
 
-Resume ATS and Job Recommendation System backend service.
+This folder contains the API server for Jobhunter.
+
+## What It Does
+
+- Handles signup and login
+- Accepts resume uploads
+- Sends resume data to the analysis service
+- Stores results in MongoDB
 
 ## Setup
 
@@ -8,33 +15,24 @@ Resume ATS and Job Recommendation System backend service.
 bun install
 ```
 
-## Environment
-
-Create `backend/.env` with the following variables:
+Create a `.env` file using the example:
 
 ```bash
 cp .env.example .env
 ```
 
+## Environment Variables
+
 ```env
-# Database (MongoDB)
 MONGODB_URI=your_mongodb_connection_string
-
-# Auth
 JWT_SECRET=your_secret_key
-
-# Server
 PORT=3001
 NODE_ENV=development
-
-# Python Service URL (from backend to Python service)
 PYTHON_SERVICE_URL=http://localhost:5000
-
-# Job API
 JOOBLE_API_KEY=your_jooble_api_key
 ```
 
-> The server exits on startup if `MONGODB_URI` is not provided.
+The server exits on startup if `MONGODB_URI` is missing.
 
 ## Run
 
@@ -42,10 +40,18 @@ JOOBLE_API_KEY=your_jooble_api_key
 bun run dev
 ```
 
-## Database Migration
+## Other Commands
 
 ```bash
+bun run build
 bun run migrate
+bun test
 ```
 
-In MongoDB mode this command is a no-op because Mongoose auto-creates collections/indexes.
+## Workflow
+
+1. Frontend sends a request to the backend.
+2. Backend validates the data and checks auth.
+3. Backend stores or fetches data from MongoDB.
+4. Backend sends resume text to the Python service for analysis.
+5. Backend returns the score, insights, and job matches.

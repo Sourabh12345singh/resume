@@ -41,12 +41,18 @@ def extract_pdf_text(pdf_path):
             
         doc = fitz.open(pdf_path)
         text = ""
-        for page in doc:
-            text += page.get_text()
+        
+        for page_num, page in enumerate(doc):
+            try:
+                text += page.get_text()
+            except Exception as page_error:
+                # Skip pages that fail to extract
+                print(f"WARNING: Could not extract text from page {page_num + 1}: {page_error}", file=sys.stderr)
+                continue
+        
         doc.close()
         
         if not text.strip():
-            print("WARNING: No text extracted from PDF", file=sys.stderr)
             return None
             
         return text

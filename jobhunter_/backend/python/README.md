@@ -116,7 +116,7 @@ Content-Type: application/json
 
 ### Batch Match Jobs (ML)
 ```bash
-POST http://localhost:5000/api/ml/batch-match-jobs
+POST http://localhost:5000/ml/api/ml/batch-match-jobs
 Content-Type: application/json
 
 {

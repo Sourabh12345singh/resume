@@ -30,6 +30,44 @@ export class AnalysisService {
     console.log(`Python service URL: ${this.pythonServiceUrl}`);
   }
 
+  private buildPdfFormData(pdfPath: string): FormData {
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(pdfPath), {
+      filename: pdfPath.split(/[\\/]/).pop() || 'resume.pdf',
+      contentType: 'application/pdf'
+    });
+    return formData;
+  }
+
+  private buildPdfFormDataWithTargetLevel(pdfPath: string, targetLevel?: string): FormData {
+    const formData = this.buildPdfFormData(pdfPath);
+    if (targetLevel) {
+      formData.append('targetLevel', targetLevel);
+    }
+    return formData;
+  }
+
+  private cleanupTempFile(pdfPath: string): void {
+    if (!pdfPath) {
+      return;
+    }
+
+    try {
+      if (fs.existsSync(pdfPath)) {
+        fs.unlinkSync(pdfPath);
+      }
+    } catch (error) {
+      console.warn(`Failed to clean up temp file ${pdfPath}:`, error);
+    }
+  }
+
+  private logAxiosResponse(error: any, context: string): void {
+    if (error?.response) {
+      console.error(`${context} response status:`, error.response.status);
+      console.error(`${context} response data:`, error.response.data);
+    }
+  }
+
   /**
    * Check if Python service is available
    */
@@ -58,12 +96,13 @@ export class AnalysisService {
       console.log(`Extracting text from: ${pdfPath}`);
 
       // Call Python service
+      const formData = this.buildPdfFormData(pdfPath);
       const response = await axios.post(
-        `${this.pythonServiceUrl}/api/extract-text`,
-        { filePath: pdfPath },
+        `${this.pythonServiceUrl}/ml/api/extract-text`,
+        formData,
         {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000 // 30 second timeout
+          headers: formData.getHeaders(),
+          timeout: 30000
         }
       );
 
@@ -99,7 +138,7 @@ export class AnalysisService {
       // Try ML endpoint first, fall back to rule-based
       try {
         const mlResponse = await axios.post(
-          `${this.pythonServiceUrl}/api/ml/analyze-text`,
+          `${this.pythonServiceUrl}/ml/api/ml/analyze-text`,
           { text },
           {
             headers: { 'Content-Type': 'application/json' },
@@ -113,7 +152,7 @@ export class AnalysisService {
         // If ML fails (e.g., libraries not installed), use rule-based
         console.log('ML analysis unavailable, using rule-based analysis');
         const response = await axios.post(
-          `${this.pythonServiceUrl}/api/analyze-text`,
+          `${this.pythonServiceUrl}/ml/api/analyze-text`,
           { text },
           {
             headers: { 'Content-Type': 'application/json' },
@@ -154,16 +193,13 @@ export class AnalysisService {
         throw new Error(`PDF file not found at path: ${pdfPath}`);
       }
 
-      // Try ML endpoint first, fall back to rule-based
       try {
+        const formData = this.buildPdfFormDataWithTargetLevel(pdfPath, targetLevel);
         const mlResponse = await axios.post(
-          `${this.pythonServiceUrl}/api/ml/analyze-pdf`,
-          { 
-            filePath: pdfPath,
-            targetLevel: targetLevel  // Pass target level to Python
-          },
+          `${this.pythonServiceUrl}/ml/api/ml/analyze-pdf`,
+          formData,
           {
-            headers: { 'Content-Type': 'application/json' },
+            headers: formData.getHeaders(),
             timeout: 60000 // 60 second timeout for complete pipeline
           }
         );
@@ -183,15 +219,14 @@ export class AnalysisService {
         return mlResponse.data;
       } catch (mlError: any) {
         // If ML fails, use rule-based
-        console.log('ML analysis unavailable, using rule-based analysis');
+        console.log('Error: ', mlError.message, ' - Now using rule-based analysis');
+        this.logAxiosResponse(mlError, 'ML analyze-pdf');
+        const formData = this.buildPdfFormDataWithTargetLevel(pdfPath, targetLevel);
         const response = await axios.post(
-          `${this.pythonServiceUrl}/api/analyze-pdf`,
-          { 
-            filePath: pdfPath,
-            targetLevel: targetLevel
-          },
+          `${this.pythonServiceUrl}/ml/api/analyze-pdf`,
+          formData,
           {
-            headers: { 'Content-Type': 'application/json' },
+            headers: formData.getHeaders(),
             timeout: 60000
           }
         );
@@ -206,11 +241,14 @@ export class AnalysisService {
           error: 'Python service is not running. Please start it with: cd backend/python && python app.py'
         };
       }
+      this.logAxiosResponse(error, 'analysis pipeline');
       console.error('Error in analysis pipeline:', error);
       return {
         success: false,
         error: error.message || 'Analysis pipeline failed'
       };
+    } finally {
+      this.cleanupTempFile(pdfPath);
     }
   }
 }
