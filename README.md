@@ -76,3 +76,15 @@ docker-compose logs -f
 - `POST /api/upload-resume` - upload resume
 - `POST /api/analyze` - analyze resume
 - `GET /api/jobs/recommendations` - get matching jobs
+ 
+## Snaps
+
+
+<img width="1889" height="977" alt="Screenshot 2026-04-01 185506" src="https://github.com/user-attachments/assets/5b4501ec-dedd-4194-9ffd-1af04149f05f" />
+
+<img width="1890" height="974" alt="Screenshot 2026-04-01 185624" src="https://github.com/user-attachments/assets/1aa3f9b6-59ed-4324-b9a0-a24f6dc88f42" />
+
+<img width="1898" height="977" alt="Screenshot 2026-04-01 185736" src="https://github.com/user-attachments/assets/5135f416-24f1-4de7-b893-caef0c8ed2f5" />
+
+<img width="1587" height="787" alt="Screenshot 2026-04-01 185811" src="https://github.com/user-attachments/assets/eaa4b1d5-39b4-490d-ba93-b09d1c18a189" />
+
