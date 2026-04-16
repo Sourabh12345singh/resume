@@ -42,7 +42,7 @@ Open the apps:
 - Backend: Express, TypeScript, Bun
 - Database: MongoDB
 - ML service: Flask, Sentence-BERT, PyMuPDF, PyTorch
-- Deployment: Docker
+- Deployment: Docker , AWS( ECS, S3)
 
 ## Environment Variables
 
