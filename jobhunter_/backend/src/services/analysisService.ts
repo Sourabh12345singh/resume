@@ -47,6 +47,18 @@ export class AnalysisService {
     return formData;
   }
 
+  private buildPdfFormDataFromBuffer(buffer: Buffer, originalName: string = 'resume.pdf', targetLevel?: string): FormData {
+    const formData = new FormData();
+    formData.append('file', buffer, {
+      filename: originalName,
+      contentType: 'application/pdf'
+    });
+    if (targetLevel) {
+      formData.append('targetLevel', targetLevel);
+    }
+    return formData;
+  }
+
   private cleanupTempFile(pdfPath: string): void {
     if (!pdfPath) {
       return;
@@ -249,6 +261,71 @@ export class AnalysisService {
       };
     } finally {
       this.cleanupTempFile(pdfPath);
+    }
+  }
+
+  /**
+   * Complete analysis pipeline directly from in-memory Buffer (no S3 download, no temp file)
+   */
+  async analyzeBuffer(buffer: Buffer, targetLevel?: string, originalName?: string): Promise<AnalysisResult> {
+    try {
+      console.log(`Starting analysis for PDF buffer (${buffer.length} bytes)`);
+      if (targetLevel) {
+        console.log(`Target experience level: ${targetLevel}`);
+      }
+
+      try {
+        const formData = this.buildPdfFormDataFromBuffer(buffer, originalName, targetLevel);
+        const mlResponse = await axios.post(
+          `${this.pythonServiceUrl}/ml/api/ml/analyze-pdf`,
+          formData,
+          {
+            headers: formData.getHeaders(),
+            timeout: 60000
+          }
+        );
+
+        console.log(`ML Analysis complete, score: ${mlResponse.data.score}`);
+
+        if (mlResponse.data.scoreBreakdown?.category_scores) {
+          console.log('📊 HYBRID SCORING BREAKDOWN:', {
+            total: mlResponse.data.score,
+            categories: mlResponse.data.scoreBreakdown.category_scores,
+            bonuses: mlResponse.data.scoreBreakdown.total_bonuses || 0,
+            penalties: mlResponse.data.scoreBreakdown.total_penalties || 0
+          });
+        }
+
+        return mlResponse.data;
+      } catch (mlError: any) {
+        console.log('Error: ', mlError.message, ' - Now using rule-based analysis');
+        this.logAxiosResponse(mlError, 'ML analyze-pdf (buffer)');
+        const formData = this.buildPdfFormDataFromBuffer(buffer, originalName, targetLevel);
+        const response = await axios.post(
+          `${this.pythonServiceUrl}/ml/api/analyze-pdf`,
+          formData,
+          {
+            headers: formData.getHeaders(),
+            timeout: 60000
+          }
+        );
+
+        console.log(`Analysis complete, score: ${response.data.score}`);
+        return response.data;
+      }
+    } catch (error: any) {
+      if (error.code === 'ECONNREFUSED') {
+        return {
+          success: false,
+          error: 'Python service is not running. Please start it with: cd backend/python && python app.py'
+        };
+      }
+      this.logAxiosResponse(error, 'analysis buffer pipeline');
+      console.error('Error in analysis buffer pipeline:', error);
+      return {
+        success: false,
+        error: error.message || 'Analysis buffer pipeline failed'
+      };
     }
   }
 }

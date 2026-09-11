@@ -1,11 +1,6 @@
 import mongoose from 'mongoose';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ResumeDbModel } from './DbModels.js';
+import s3Service from '../services/s3Service.js';
 
 export interface AnalysisHistoryEntry {
   version: number;
@@ -42,19 +37,6 @@ export interface DeletedResumeSummary {
 }
 
 export class ResumeModel {
-  private readonly s3 = new S3Client({
-    region: process.env.AWS_REGION || 'ap-south-1'
-  });
-
-  private getBucketName(): string {
-    const bucketArn = process.env.BUCKET_ARN || 'arn:aws:s3:::jobhunter-resumes01';
-    return process.env.BUCKET_NAME || bucketArn.split(':::').pop() || 'jobhunter-resumes01';
-  }
-
-  getResumeUrl(s3Key: string): string {
-    return `https://${this.getBucketName()}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${encodeURIComponent(s3Key)}`;
-  }
-
   private extractS3Key(doc: any): string {
     if (doc?.s3_key) {
       return doc.s3_key;
@@ -71,38 +53,14 @@ export class ResumeModel {
     return doc?.file_path || '';
   }
 
-  async downloadResumeToTempFile(s3Key: string, resumeId: string): Promise<string> {
-    if (!s3Key) {
-      throw new Error('Resume S3 key is missing');
-    }
-
-    const tempDir = path.join(os.tmpdir(), 'jobhunter-resumes');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const tempFilePath = path.join(tempDir, `${resumeId}-${Date.now()}-${path.basename(s3Key)}`);
-    const response = await this.s3.send(new GetObjectCommand({
-      Bucket: this.getBucketName(),
-      Key: s3Key
-    }));
-
-    if (!response.Body) {
-      throw new Error('Empty S3 response body');
-    }
-
-    const writeStream = createWriteStream(tempFilePath);
-    await pipeline(response.Body as any, writeStream);
-    return tempFilePath;
-  }
-
   private mapResume(doc: any): Resume {
+    const s3Key = this.extractS3Key(doc);
     return {
       id: doc._id.toString(),
       user_id: doc.user_id.toString(),
       file_name: doc.file_name,
-      s3_key: this.extractS3Key(doc),
-      file_path: doc.file_path || this.getResumeUrl(this.extractS3Key(doc)),
+      s3_key: s3Key,
+      file_path: doc.file_path || (s3Key ? s3Service.getPublicUrl(s3Key) : ''),
       upload_date: doc.upload_date,
       is_latest: doc.is_latest,
       status: doc.status,
@@ -125,6 +83,7 @@ export class ResumeModel {
       user_id: userId,
       file_name: fileName,
       s3_key: s3Key,
+      file_path: s3Service.getPublicUrl(s3Key),
       is_latest: true,
       status: 'uploaded'
     });
@@ -302,4 +261,6 @@ export class ResumeModel {
       await latest.save();
     }
   }
-} 
+}
+
+export default new ResumeModel();

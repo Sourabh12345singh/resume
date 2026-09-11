@@ -8,7 +8,6 @@
     "dev": "bun run src/server.ts",
     "start": "bun run src/server.ts",
     "build": "tsc",
-    "migrate": "bun run src/db/migrations/run_migration.ts",
     "test": "bun test"
   },
   "keywords": [
